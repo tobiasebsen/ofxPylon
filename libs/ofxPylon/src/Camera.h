@@ -12,10 +12,16 @@ namespace ofxPylon {
 
 	class Camera : public ofBaseVideoGrabber, public ofBaseVideoDraws {
 	public:
+		Camera();
 		~Camera();
+
+		bool open();
+		void start();
+		void stop();
 
 		// ofBaseVideoGrabber
 		virtual std::vector<ofVideoDevice> listDevices() const;
+		virtual bool setup();
 		virtual bool setup(int w, int h);
 		virtual bool setup(int w, int h, bool useTexture);
 		virtual float getHeight() const;

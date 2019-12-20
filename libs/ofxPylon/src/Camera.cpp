@@ -39,8 +39,22 @@ private:
 
 
 
+ofxPylon::Camera::Camera() {
+
+	Pylon::PylonInitialize();
+
+	configHandler = shared_ptr<Pylon::CAcquireContinuousConfiguration>(new Pylon::CAcquireContinuousConfiguration);
+	imageHandler = shared_ptr<Pylon::CImageEventHandler>(new ImageEventHandler(this));
+}
+
 ofxPylon::Camera::~Camera() {
+
 	close();
+
+	imageHandler.reset();
+	configHandler.reset();
+
+	Pylon::PylonTerminate();
 }
 
 std::vector<ofVideoDevice> ofxPylon::Camera::listDevices() const {
@@ -60,19 +74,70 @@ std::vector<ofVideoDevice> ofxPylon::Camera::listDevices() const {
 	return devices;
 }
 
-bool ofxPylon::Camera::setup(int w, int h) {
+bool ofxPylon::Camera::open() {
 
-	Pylon::PylonInitialize();
+	close();
 
 	try {
-
-		configHandler = shared_ptr<Pylon::CAcquireContinuousConfiguration>(new Pylon::CAcquireContinuousConfiguration);
-		imageHandler = shared_ptr<Pylon::CImageEventHandler>(new ImageEventHandler(this));
 
 		camera = shared_ptr<Pylon::CInstantCamera>(new Pylon::CInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice()));
 		camera->RegisterImageEventHandler(imageHandler.get(), Pylon::RegistrationMode_ReplaceAll, Pylon::Ownership_ExternalOwnership);
 
 		camera->Open();
+
+		configHandler->OnOpen(*camera);
+	}
+	catch (Pylon::GenericException & e) {
+		ofLogError("ofxPylon::Camera") << e.GetDescription();
+		return false;
+	}
+
+	return true;
+}
+
+void ofxPylon::Camera::start() {
+
+	if (!camera || camera->IsGrabbing())
+		return;
+
+	try {
+		camera->StartGrabbing(Pylon::GrabStrategy_OneByOne, Pylon::GrabLoop_ProvidedByInstantCamera);
+	}
+	catch (Pylon::GenericException & e) {
+		ofLogError("ofxPylon::Camera") << e.GetDescription();
+	}
+}
+
+void ofxPylon::Camera::stop() {
+
+	if (camera) {
+		std::lock_guard<std::mutex> locker(lock);
+
+		if (!camera->IsGrabbing())
+			return;
+
+		try {
+			camera->StopGrabbing();
+		}
+		catch (Pylon::GenericException & e) {
+			ofLogError("ofxPylon::Camera") << e.GetDescription();
+		}
+	}
+}
+
+bool ofxPylon::Camera::setup() {
+	open();
+	start();
+	return true;
+}
+
+bool ofxPylon::Camera::setup(int w, int h) {
+
+	if (!camera && !open()) {
+		return false;
+	}
+
+	try {
 
 		GenApi::INodeMap & nodeMap = camera->GetNodeMap();
 		uint64_t widthMax = Pylon::CIntegerParameter(nodeMap.GetNode("SensorWidth")).GetValue();
@@ -89,15 +154,13 @@ bool ofxPylon::Camera::setup(int w, int h) {
 
 		Pylon::CBooleanParameter(nodeMap.GetNode("CenterX")).SetValue(1);
 		Pylon::CBooleanParameter(nodeMap.GetNode("CenterY")).SetValue(1);
-
-		configHandler->OnOpen(*camera);
-
-		camera->StartGrabbing(Pylon::GrabStrategy_OneByOne, Pylon::GrabLoop_ProvidedByInstantCamera);
 	}
 	catch (Pylon::GenericException & e) {
 		ofLogError("ofxPylon::Camera") << e.GetDescription();
 		return false;
 	}
+
+	start();
 
 	return true;
 }
@@ -105,6 +168,17 @@ bool ofxPylon::Camera::setup(int w, int h) {
 bool ofxPylon::Camera::setup(int w, int h, bool useTexture) {
 	this->useTexture = useTexture;
 	return setup(w, h);
+}
+
+void ofxPylon::Camera::close() {
+	if (camera) {
+		std::lock_guard<std::mutex> locker(lock);
+
+		camera->StopGrabbing();
+
+		camera->Close();
+		camera.reset();
+	}
 }
 
 float ofxPylon::Camera::getWidth() const {
@@ -117,20 +191,6 @@ float ofxPylon::Camera::getHeight() const {
 
 bool ofxPylon::Camera::isFrameNew() const {
 	return frameNew;
-}
-
-void ofxPylon::Camera::close() {
-	if (camera) {
-		std::lock_guard<std::mutex> locker(lock);
-
-		camera->StopGrabbing();
-
-		camera->Close();
-		camera.reset();
-
-		imageHandler.reset();
-		configHandler.reset();
-	}
 }
 
 bool ofxPylon::Camera::isInitialized() const {
