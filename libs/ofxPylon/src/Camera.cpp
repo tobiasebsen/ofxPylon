@@ -79,13 +79,10 @@ bool ofxPylon::Camera::open() {
 	close();
 
 	try {
-
 		camera = shared_ptr<Pylon::CInstantCamera>(new Pylon::CInstantCamera(Pylon::CTlFactory::GetInstance().CreateFirstDevice()));
+		camera->RegisterConfiguration(configHandler.get(), Pylon::RegistrationMode_ReplaceAll, Pylon::Ownership_ExternalOwnership);
 		camera->RegisterImageEventHandler(imageHandler.get(), Pylon::RegistrationMode_ReplaceAll, Pylon::Ownership_ExternalOwnership);
-
 		camera->Open();
-
-		configHandler->OnOpen(*camera);
 	}
 	catch (Pylon::GenericException & e) {
 		ofLogError("ofxPylon::Camera") << e.GetDescription();
