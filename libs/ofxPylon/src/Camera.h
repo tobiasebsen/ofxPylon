@@ -43,6 +43,7 @@ namespace ofxPylon {
 
 		// ofBaseDraws
 		virtual void draw(float x, float y, float w, float h) const;
+		using ofBaseDraws::draw;
 
 		// ofBaseHasTexturePlanes
 		virtual std::vector<ofTexture> & getTexturePlanes();

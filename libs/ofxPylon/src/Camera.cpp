@@ -17,14 +17,22 @@ public:
 			size_t height = grabResult->GetHeight();
 
 			Pylon::EPixelType pixelType = grabResult->GetPixelType();
-			Pylon::IsMonoImage(pixelType);
-			Pylon::BitDepth(pixelType);
-
 			void * buffer = grabResult->GetBuffer();
 
 			if (pixelType == Pylon::PixelType::PixelType_Mono8) {
 				parent->pixelsFront->allocate(width, height, 1);
 				parent->pixelsFront->setFromPixels(static_cast<unsigned char*>(buffer), width, height, 1);
+				parent->frontGrabbed = true;
+			}
+			if (pixelType == Pylon::PixelType::PixelType_RGB8packed) {
+				parent->pixelsFront->allocate(width, height, 3);
+				parent->pixelsFront->setFromPixels(static_cast<unsigned char*>(buffer), width, height, 3);
+				parent->frontGrabbed = true;
+			}
+			else {
+				parent->pixelsFront->allocate(width, height, IsMonoImage(pixelType) ? 1 : 3);
+				converter.OutputPixelFormat = Pylon::IsMonoImage(pixelType) ? Pylon::PixelType::PixelType_Mono8 : Pylon::PixelType_RGB8packed;
+				converter.Convert((void*)parent->pixelsFront->getData(), parent->pixelsFront->getTotalBytes(), grabResult);
 				parent->frontGrabbed = true;
 			}
 		}
@@ -35,6 +43,7 @@ public:
 
 private:
 	ofxPylon::Camera * parent;
+	Pylon::CImageFormatConverter converter;
 };
 
 
