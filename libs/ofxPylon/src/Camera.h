@@ -16,7 +16,7 @@ namespace ofxPylon {
 		~Camera();
 
 		bool open();
-		void start();
+		bool start();
 		void stop();
 
 		// ofBaseVideoGrabber
@@ -55,6 +55,12 @@ namespace ofxPylon {
 		virtual void setUseTexture(bool bUseTex);
 		virtual bool isUsingTexture() const;
 
+		// Pylon parameters
+		ofParameter<float> & getParameterFloat(string name);
+		ofParameter<string> & getParameterString(string name);
+		const ofParameterGroup & getParameterGroup() const;
+		void parameterChanged(ofAbstractParameter & ap);
+
 	protected:
 		friend ImageEventHandler;
 		std::mutex lock;
@@ -74,5 +80,7 @@ namespace ofxPylon {
 		ofTexture texture;
 		vector<ofTexture> texturePlanes = { 1 , texture };
 		bool useTexture = true;
+
+		ofParameterGroup paramGroup;
 	};
 }

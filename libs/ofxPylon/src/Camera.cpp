@@ -54,6 +54,8 @@ ofxPylon::Camera::Camera() {
 
 	configHandler = shared_ptr<Pylon::CAcquireContinuousConfiguration>(new Pylon::CAcquireContinuousConfiguration);
 	imageHandler = shared_ptr<Pylon::CImageEventHandler>(new ImageEventHandler(this));
+
+	ofAddListener(paramGroup.parameterChangedE(), this, &ofxPylon::Camera::parameterChanged);
 }
 
 ofxPylon::Camera::~Camera() {
@@ -101,17 +103,19 @@ bool ofxPylon::Camera::open() {
 	return true;
 }
 
-void ofxPylon::Camera::start() {
+bool ofxPylon::Camera::start() {
 
 	if (!camera || camera->IsGrabbing())
-		return;
+		return false;
 
 	try {
 		camera->StartGrabbing(Pylon::GrabStrategy_OneByOne, Pylon::GrabLoop_ProvidedByInstantCamera);
 	}
 	catch (Pylon::GenericException & e) {
 		ofLogError("ofxPylon::Camera") << e.GetDescription();
+		return false;
 	}
+	return true;
 }
 
 void ofxPylon::Camera::stop() {
@@ -149,26 +153,25 @@ bool ofxPylon::Camera::setup(int w, int h) {
 		uint64_t widthMax = Pylon::CIntegerParameter(nodeMap.GetNode("SensorWidth")).GetValue();
 		uint64_t heightMax = Pylon::CIntegerParameter(nodeMap.GetNode("SensorHeight")).GetValue();
 
+		Pylon::CIntegerParameter(nodeMap.GetNode("Width")).SetValue(w);
+		Pylon::CIntegerParameter(nodeMap.GetNode("Height")).SetValue(h);
+
+		Pylon::CBooleanParameter(nodeMap.GetNode("CenterX")).SetValue(1);
+		Pylon::CBooleanParameter(nodeMap.GetNode("CenterY")).SetValue(1);
+
+
 		uint64_t binH = floor(widthMax / w);
 		uint64_t binV = floor(heightMax / h);
 
 		Pylon::CIntegerParameter(nodeMap.GetNode("BinningHorizontal")).SetValue(binH);
 		Pylon::CIntegerParameter(nodeMap.GetNode("BinningVertical")).SetValue(binV);
 
-		Pylon::CIntegerParameter(nodeMap.GetNode("Width")).SetValue(w);
-		Pylon::CIntegerParameter(nodeMap.GetNode("Height")).SetValue(h);
-
-		Pylon::CBooleanParameter(nodeMap.GetNode("CenterX")).SetValue(1);
-		Pylon::CBooleanParameter(nodeMap.GetNode("CenterY")).SetValue(1);
 	}
 	catch (Pylon::GenericException & e) {
 		ofLogError("ofxPylon::Camera") << e.GetDescription();
-		return false;
 	}
 
-	start();
-
-	return true;
+	return start();
 }
 
 bool ofxPylon::Camera::setup(int w, int h, bool useTexture) {
@@ -263,4 +266,59 @@ void ofxPylon::Camera::setUseTexture(bool bUseTex) {
 
 bool ofxPylon::Camera::isUsingTexture() const {
 	return useTexture;
+}
+
+ofParameter<float> & ofxPylon::Camera::getParameterFloat(string name) {
+	auto param = paramGroup.contains(name) ? paramGroup.getFloat(name) : ofParameter<float>(name, 0);
+
+	if (camera && camera->IsOpen()) {
+		GenApi::INodeMap & nodeMap = camera->GetNodeMap();
+		GenApi::INode * node = nodeMap.GetNode(name.c_str());
+		auto & p = Pylon::CFloatParameter(node);
+		param.set(p.GetValue());
+		param.setMin(p.GetMin());
+		param.setMax(p.GetMax());
+	}
+
+	if (!paramGroup.contains(name)) {
+		paramGroup.add(param);
+	}
+	return paramGroup.getFloat(name);
+}
+
+ofParameter<string>& ofxPylon::Camera::getParameterString(string name) {
+	auto param = paramGroup.contains(name) ? paramGroup.getString(name) : ofParameter<string>(name, "");
+
+	if (camera && camera->IsOpen()) {
+		GenApi::INodeMap & nodeMap = camera->GetNodeMap();
+		GenApi::INode * node = nodeMap.GetNode(name.c_str());
+		auto & p = Pylon::CStringParameter(node);
+		param.set(p.GetValue().c_str());
+	}
+
+	if (!paramGroup.contains(name)) {
+		paramGroup.add(param);
+	}
+	return paramGroup.getString(name);
+}
+
+const ofParameterGroup & ofxPylon::Camera::getParameterGroup() const {
+	return paramGroup;
+}
+
+void ofxPylon::Camera::parameterChanged(ofAbstractParameter & ap) {
+	if (!camera || !camera->IsOpen())
+		return;
+	GenApi::INodeMap & nodeMap = camera->GetNodeMap();
+	GenApi::INode * node = nodeMap.GetNode(ap.getName().c_str());
+	GenApi::EInterfaceType itype = node->GetPrincipalInterfaceType();
+	if (itype == GenApi::EInterfaceType::intfIFloat) {
+		auto & p = Pylon::CFloatParameter(node);
+		try {
+			p.SetValue(ap.cast<float>().get());
+		}
+		catch (Pylon::GenericException & e) {
+			ofLogError("ofxPylon::Camera") << e.GetDescription();
+		}
+	}
 }
